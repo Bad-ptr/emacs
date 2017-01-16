@@ -1726,29 +1726,63 @@ cleaning up all windows currently displaying the buffer to be killed. */)
      since set-window-buffer-start-and-point will refuse to make another
      buffer current if the selected window does not show the current
      buffer (bug#10114).  */
-  replace_buffer_in_windows (buffer);
+  if (0 != b->window_count || NULL != b->base_buffer)
+    replace_buffer_in_windows (buffer);
 
   /* Exit if replacing the buffer in windows has killed our buffer.  */
   if (!BUFFER_LIVE_P (b))
     return Qt;
 
-  /* Make this buffer not be current.  Exit if it is the sole visible
-     buffer.  */
-  if (b == current_buffer)
-    {
-      tem = Fother_buffer (buffer, Qnil, Qnil);
-      Fset_buffer (tem);
-      if (b == current_buffer)
-	return Qnil;
-    }
+  {
+    char other_buffer_was_called = 0;
+    /* Make this buffer not be current.  Exit if it is the sole visible
+       buffer.  */
+    if (b == current_buffer)
+      {
+        // tem = Fother_buffer (buffer, Qnil, Qnil);
+        if (WINDOWP (selected_window) && WINDOW_LIVE_P (selected_window))
+          {
+            if (selected_window == minibuf_window
+                && WINDOW_LIVE_P (minibuf_selected_window))
+              {
+                tem = XWINDOW (minibuf_selected_window)->contents;
+              }
+            else
+              {
+                tem = XWINDOW (selected_window)->contents;
+              }
+          }
+        else
+          {
+            tem = XCDR (XCAR (Vbuffer_alist));
+            if (tem == buffer)
+              tem = XCDR (XCAR (XCDR (Vbuffer_alist)));
+          }
 
-  /* If the buffer now current is shown in the minibuffer and our buffer
-     is the sole other buffer give up.  */
-  XSETBUFFER (tem, current_buffer);
-  if (EQ (tem, XWINDOW (minibuf_window)->contents)
-      && EQ (buffer, Fother_buffer (buffer, Qnil, Qnil)))
-    return Qnil;
+        if (tem == buffer || !BUFFERP(tem) || !BUFFER_LIVE_P (XBUFFER (tem)))
+          {
+            tem = Fother_buffer (buffer, Qnil, Qnil);
+            other_buffer_was_called = 1;
+          }
 
+        Fset_buffer (tem);
+
+        if (b == current_buffer)
+          return Qnil;
+      }
+
+    XSETBUFFER (tem, current_buffer);
+
+    /* If the buffer now current is shown in the minibuffer and our buffer
+       is the sole other buffer give up.  */
+    if (EQ (tem, XWINDOW (minibuf_window)->contents))
+      {
+        if (0 == other_buffer_was_called)
+          tem = Fother_buffer (buffer, Qnil, Qnil);
+        if (EQ (buffer, tem))
+          return Qnil;
+      }
+  }
   /* Now there is no question: we can kill the buffer.  */
 
   /* Unlock this buffer's file, if it is locked.  */
